@@ -16,6 +16,7 @@ int blockCount;
 int *decodedBlocks;
 int *ciphertextArray;
 int numBlocks;
+int totalDecodedBlocks = 0;
 
 // printMatrix() will print the contents of the 2x2 matrix.
 void printMatrix(int *array)
@@ -212,48 +213,89 @@ int main(int argc, char **argv)
         }
 
         // print only the blocks allocated for the coordinator
-        // for (int i = 0; i < blocksPerNode + 1; i++)
+        for (int i = 0; i < blocksPerNode + 1; i++)
+        {
+            int *decodedBlock = decodeBlock(blocks[i], inverse);
+
+            // Print or use the decoded block as needed.
+            // std::cout << "Node " << 0 << " decoded blocks: ";
+            // printArray(decodedBlock, 2);
+        }
+
+        // Receive decoded blocks from participants.
+        for (int i = 1; i < world_size; i++)
+        {
+            // Receive the number of decoded blocks.
+            int numDecodedBlocks;
+            MPI_Recv(&numDecodedBlocks, 1, MPI_INT, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+            // Allocate memory for received decoded blocks.
+            int *receivedDecodedBlocks = new int[2 * numDecodedBlocks];
+
+            // Receive the decoded blocks.
+            for (int j = 0; j < 2 * numDecodedBlocks; j++)
+            {
+                MPI_Recv(&receivedDecodedBlocks[j], 1, MPI_INT, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            }
+
+            // Print or use the received decoded blocks as needed.
+            std::cout << "Node 0 received decoded blocks from Node " << i << ": ";
+            printArray(receivedDecodedBlocks, 2 * numDecodedBlocks);
+
+            // Deallocate memory for received decoded blocks.
+            delete[] receivedDecodedBlocks;
+        }
+    }
+    else
+    {
+
+        // Receive the inverse matrix from the coordinator.
+        MPI_Bcast(inverse, 4, MPI_INT, 0, MPI_COMM_WORLD);
+
+        // Receive the number of blocks.
+        int numBlocksToReceive;
+        MPI_Recv(&numBlocksToReceive, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+        // Allocate contiguous memory for two blocks.
+        int *receivedBlocks = new int[2 * 2]; // Allocate for two blocks
+
+        for (int i = 0; i < numBlocksToReceive; ++i)
+        {
+            MPI_Recv(&receivedBlocks[2 * i], 2, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        }
+
+        // Print the received blocks.
+        // for (int i = 0; i < numBlocksToReceive; ++i)
         // {
-        //     std::cout << "Node " << 0 << " decoded blocks: ";
-        //     int *decodedBlock = decodeBlock(blocks[i], inverse);
-        //     // Print or use the decoded block as needed.
-        //     printArray(decodedBlock, 2);
+        //     std::cout << "Node " << world_rank << " received blocks: ";
+        //     printArray(&receivedBlocks[2 * i], 2);
         // }
-    }
-    // Receive the inverse matrix from the coordinator.
-    MPI_Bcast(inverse, 4, MPI_INT, 0, MPI_COMM_WORLD);
 
-    // Receive the number of blocks.
-    int numBlocksToReceive;
-    MPI_Recv(&numBlocksToReceive, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        // Decode the participant's blocks.
+        for (int i = 0; i < numBlocksToReceive; i++)
+        {
+            // Calculate the start index of the current block in the receivedBlocks array.
+            int blockStartIndex = 2 * i;
 
-    // Allocate contiguous memory for two blocks.
-    int *receivedBlocks = new int[2 * 2]; // Allocate for two blocks
+            // std::cout << "Node " << world_rank << " decoded blocks: ";
+            int *decodedBlock = decodeBlock(&receivedBlocks[blockStartIndex], inverse);
 
-    for (int i = 0; i < numBlocksToReceive; ++i)
-    {
-        MPI_Recv(&receivedBlocks[2 * i], 2, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    }
+            // Print out the decoded blocks
+            std::cout << "Node " << world_rank << " decoded blocks: ";
+            printArray(decodedBlock, 2);
 
-    // Print the received blocks.
-    // for (int i = 0; i < numBlocksToReceive; ++i)
-    // {
-    //     std::cout << "Node " << world_rank << " received blocks: ";
-    //     printArray(&receivedBlocks[2 * i], 2);
-    // }
+            // Send the number of decoded blocks to the coordinator (node 0).
+            MPI_Send(&numBlocksToReceive, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
 
-    // Deallocate memory.
-    delete[] receivedBlocks;
+            // Send the decoded block to the coordinator (node 0).
+            for (int j = 0; j < 2; j++)
+            {
+                MPI_Send(&decodedBlock[j], 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
+            }
+        }
 
-    // Decode the participant's blocks.
-    for (int i = 0; i < numBlocksToReceive; i++)
-    {
-        // std::cout << "Node " << world_rank << " decoded blocks: ";
-        int *decodedBlock = decodeBlock(&receivedBlocks[i], inverse);
-        // Print or use the decoded block as needed.
-        // print out the decoded blocks
-        std::cout << "Node " << world_rank << " decoded blocks: ";
-        printArray(decodedBlock, 2);
+        // Deallocate memory.
+        delete[] receivedBlocks;
     }
 
     // Finalize MPI
